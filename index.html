@@ -34,6 +34,13 @@
           <button class="button-primary" id="save-month-plan">保存月度计划</button>
         </div>
       </div>
+      <div class="card recurring-checkin-card">
+        <div class="section-title">
+          <span>本周打卡瓶</span>
+          <small id="recurring-checkin-date"></small>
+        </div>
+        <div id="recurring-checkin-table"></div>
+      </div>
       <div class="panel-grid columns-2">
         <div class="card">
           <div class="calendar-header section-title">
@@ -44,9 +51,6 @@
             <select id="year-select"></select>
             <select id="month-select"></select>
             <button class="button-primary" id="today-button">今天</button>
-            <button class="button-secondary" id="export-backup">导出备份</button>
-            <button class="button-secondary" id="import-backup">导入备份</button>
-            <input type="file" id="backup-file-input" accept="application/json" hidden />
           </div>
           <div class="grid-calendar" id="calendar-grid"></div>
         </div>
@@ -78,10 +82,31 @@
           <div class="input-row">
             <label class="label">任务名称</label>
             <input id="task-title" placeholder="例如：写项目总结" />
-            <label class="label">日期</label>
-            <input id="task-date" type="date" />
-            <label class="label">时间</label>
-            <input id="task-time" type="time" />
+            <label class="label">任务模式</label>
+            <select id="task-mode">
+              <option value="normal">普通任务</option>
+              <option value="recurring">周期打卡</option>
+            </select>
+            <div class="task-normal-fields" id="task-normal-fields">
+              <label class="label">日期</label>
+              <input id="task-date" type="date" />
+              <label class="label">时间</label>
+              <input id="task-time" type="time" />
+            </div>
+            <div class="task-recurring-fields hidden" id="task-recurring-fields">
+              <label class="label">开始日期</label>
+              <input id="recurring-start-date" type="date" />
+              <label class="label">结束日期（留空为永久）</label>
+              <input id="recurring-end-date" type="date" />
+              <label class="label">周期</label>
+              <select id="recurring-cycle">
+                <option value="day">每天</option>
+                <option value="week">每周</option>
+                <option value="month">每月</option>
+              </select>
+              <label class="label">每周期目标次数</label>
+              <input id="recurring-target-count" type="number" min="1" step="1" value="1" />
+            </div>
             <label class="label">任务类型</label>
             <select id="task-type"></select>
             <div class="calendar-controls">
@@ -131,7 +156,7 @@
           </div>
         </div>
         <div class="card">
-          <div class="section-title">每日总结一览</div>
+          <div class="section-title">已记录的每日总结</div>
           <div id="daily-summary-list"></div>
         </div>
       </div>
@@ -162,6 +187,17 @@
   </div>
 
   <aside class="inspiration-board" aria-label="每日激励">
+    <section class="year-progress-board" aria-label="年度周期打卡进度">
+      <div class="year-progress-header">
+        <h2>年度进度</h2>
+        <div class="global-backup-actions" aria-label="全局数据备份">
+          <button class="button-secondary compact" id="export-backup">导出全部</button>
+          <button class="button-secondary compact" id="import-backup">导入全部</button>
+          <input type="file" id="backup-file-input" accept="application/json" hidden />
+        </div>
+      </div>
+      <div id="year-progress-table"></div>
+    </section>
     <h2>人生回报率最高的8件小事</h2>
     <ol start="1">
       <li>每天23:00前睡觉</li>
@@ -171,7 +207,7 @@
       <li>每天阅读30min</li>
       <li>刻意练习写作</li>
       <li>每天冥想15min</li>
-      <li>周末去公园夕阳</li>
+      <li>周末去公园吸氧</li>
     </ol>
   </aside>
 

@@ -73,6 +73,78 @@ body {
   color: #2a7dff;
   font-weight: 700;
 }
+.year-progress-board {
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(42, 125, 255, 0.16);
+}
+.year-progress-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.year-progress-header h2 {
+  margin: 0;
+}
+.global-backup-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.button-secondary.compact {
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.year-progress-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.year-progress-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.year-progress-table th,
+.year-progress-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(42, 125, 255, 0.12);
+  text-align: left;
+  vertical-align: middle;
+}
+.year-progress-table th {
+  color: var(--muted);
+  font-weight: 700;
+}
+.year-progress-table td:first-child {
+  color: #174864;
+  font-weight: 700;
+  word-break: break-word;
+}
+.year-progress-value {
+  display: inline-block;
+  min-width: 36px;
+  color: #0d4f7c;
+  font-weight: 700;
+}
+.year-progress-meter {
+  display: block;
+  height: 7px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(42, 125, 255, 0.12);
+}
+.year-progress-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #42d392, #37b2ff);
+}
 .topbar {
   padding: 26px 28px 24px;
   display: grid;
@@ -169,6 +241,11 @@ body {
   display: grid;
   gap: 14px;
   margin-top: 12px;
+}
+.task-normal-fields,
+.task-recurring-fields {
+  display: grid;
+  gap: 14px;
 }
 input, textarea, select, button {
   border: 1px solid rgba(255,255,255,.12);
@@ -580,6 +657,123 @@ button {
   color: var(--muted);
   font-size: 0.86rem;
 }
+.recurring-task-item {
+  align-items: flex-start;
+}
+.checkin-section-title {
+  margin-top: 18px;
+}
+.checkin-bar {
+  width: 100%;
+  height: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(31, 169, 116, 0.12);
+}
+.checkin-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #42d392, #37b2ff);
+}
+.checkin-button {
+  min-width: 76px;
+  padding: 10px 14px;
+}
+.checkin-button:disabled {
+  cursor: default;
+  opacity: 0.68;
+  transform: none;
+}
+.bottle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 16px;
+}
+.checkin-bottle-card {
+  min-height: 210px;
+  padding: 16px 12px 14px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  border: 1px solid rgba(42, 125, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: 0 14px 34px rgba(8, 66, 112, 0.08);
+  transition: transform .18s, box-shadow .18s, border-color .18s;
+}
+.checkin-bottle-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(42, 125, 255, 0.28);
+  box-shadow: 0 18px 42px rgba(8, 66, 112, 0.12);
+}
+.checkin-bottle-card.lit {
+  background: rgba(236, 252, 255, 0.82);
+  border-color: rgba(31, 169, 116, 0.32);
+}
+.checkin-bottle-card.full .bottle {
+  box-shadow: 0 0 0 1px rgba(66, 211, 146, 0.2), 0 16px 36px rgba(66, 211, 146, 0.2);
+}
+.bottle {
+  position: relative;
+  width: 58px;
+  height: 108px;
+  margin-top: 4px;
+  overflow: hidden;
+  border: 2px solid rgba(23, 111, 184, 0.34);
+  border-radius: 20px 20px 16px 16px;
+  background: rgba(255, 255, 255, 0.38);
+}
+.bottle::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: -2px;
+  width: 22px;
+  height: 12px;
+  border: 2px solid rgba(23, 111, 184, 0.3);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: rgba(255, 255, 255, 0.7);
+  z-index: 2;
+}
+.bottle-water {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  min-height: 4px;
+  background: linear-gradient(180deg, rgba(92, 211, 255, 0.72), rgba(66, 211, 146, 0.8));
+  transition: height .25s ease;
+}
+.bottle-shine {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  width: 8px;
+  height: 58px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.52);
+}
+.bottle-title {
+  max-width: 100%;
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.94rem;
+  text-align: center;
+  word-break: break-word;
+}
+.bottle-meta,
+.bottle-state {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.checkin-bottle-card.lit .bottle-state,
+.checkin-bottle-card.full .bottle-state {
+  color: #137757;
+  font-weight: 700;
+}
 .pill {
   background: rgba(255,255,255,.06);
   padding: 6px 10px;
@@ -738,6 +932,9 @@ button {
 .month-plan-card {
   margin: 0 20px 18px;
 }
+.recurring-checkin-card {
+  margin: 0 20px 18px;
+}
 .month-plan {
   display: flex;
   gap: 12px;
@@ -784,6 +981,12 @@ button {
 }
 .day-summary-row textarea {
   min-height: 90px;
+}
+.daily-summary-content {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 .label { color: var(--muted); font-size: 0.9rem; }
 .hidden { display: none !important; }

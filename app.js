@@ -59,8 +59,15 @@ const elements = {
   dismissReminder: document.getElementById('dismiss-reminder'),
   todayButton: document.getElementById('today-button'),
   taskTitle: document.getElementById('task-title'),
+  taskMode: document.getElementById('task-mode'),
+  taskNormalFields: document.getElementById('task-normal-fields'),
+  taskRecurringFields: document.getElementById('task-recurring-fields'),
   taskDate: document.getElementById('task-date'),
   taskTime: document.getElementById('task-time'),
+  recurringStartDate: document.getElementById('recurring-start-date'),
+  recurringEndDate: document.getElementById('recurring-end-date'),
+  recurringCycle: document.getElementById('recurring-cycle'),
+  recurringTargetCount: document.getElementById('recurring-target-count'),
   taskType: document.getElementById('task-type'),
   saveTask: document.getElementById('save-task'),
   cancelEdit: document.getElementById('cancel-edit'),
@@ -79,6 +86,9 @@ const elements = {
   saveType: document.getElementById('save-type'),
   monthlyPlan: document.getElementById('monthly-plan'),
   saveMonthPlan: document.getElementById('save-month-plan'),
+  recurringCheckinDate: document.getElementById('recurring-checkin-date'),
+  recurringCheckinTable: document.getElementById('recurring-checkin-table'),
+  yearProgressTable: document.getElementById('year-progress-table'),
   typeList: document.getElementById('type-list'),
   fireworks: document.getElementById('fireworks')
 };
@@ -115,6 +125,7 @@ function saveState() {
 
 function getBackupData() {
   return {
+    version: 1,
     tasks: state.tasks,
     types: state.types,
     dailySummaries: state.dailySummaries,
@@ -137,10 +148,13 @@ function exportBackup(filename) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  showToast('已导出备份文件，可用于恢复。');
+  showToast('已导出全部数据备份。');
 }
 
 function importBackup(file) {
+  if (!window.confirm('导入会覆盖当前所有页面数据，确定继续吗？')) {
+    return;
+  }
   const reader = new FileReader();
   reader.onload = () => {
     try {
@@ -157,9 +171,9 @@ function importBackup(file) {
       state.remindedStatus = data.remindedStatus || {};
       saveState();
       renderAll();
-      showToast('备份已导入，数据已恢复。');
+      showToast('已导入全部数据，页面内容已恢复。');
     } catch (err) {
-      showToast('导入失败：无效备份文件。');
+      showToast('导入失败：请选择有效的完整备份文件。');
     }
   };
   reader.readAsText(file, 'utf-8');
@@ -256,6 +270,113 @@ function renderTabPanels() {
   });
 }
 
+function getTaskMode(task) {
+  return task.mode || 'normal';
+}
+
+function getTaskDate(task) {
+  return getTaskMode(task) === 'recurring' ? task.startDate : task.date;
+}
+
+function getCycleLabel(cycle) {
+  if (cycle === 'week') return '每周';
+  if (cycle === 'month') return '每月';
+  return '每天';
+}
+
+function getWeekKey(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() + 4 - day);
+  const yearStart = new Date(date.getFullYear(), 0, 1);
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+function formatDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekRange(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const day = date.getDay() || 7;
+  const start = new Date(date);
+  start.setDate(date.getDate() - day + 1);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start: formatDate(start), end: formatDate(end) };
+}
+
+function getRecurringPeriodKey(task, dateStr) {
+  if (task.cycle === 'week') return getWeekKey(dateStr);
+  if (task.cycle === 'month') return dateStr.slice(0, 7);
+  return dateStr;
+}
+
+function isRecurringTaskActiveOn(task, dateStr) {
+  return getTaskMode(task) === 'recurring'
+    && task.startDate
+    && dateStr >= task.startDate
+    && (!task.endDate || dateStr <= task.endDate);
+}
+
+function getRecurringProgress(task, dateStr) {
+  const periodKey = getRecurringPeriodKey(task, dateStr);
+  const target = Math.max(1, Number(task.targetCount) || 1);
+  const record = task.records?.[periodKey];
+  const done = Math.min(target, typeof record === 'number' ? record : Number(record?.count) || 0);
+  const dates = Array.isArray(record?.dates) ? record.dates : [];
+  const percent = Math.min(100, Math.round((done / target) * 100));
+  return { periodKey, target, done, dates, percent, completed: done >= target, checkedToday: dates.includes(dateStr) };
+}
+
+function getWeeklyExpectedCount(task, dateStr) {
+  const target = Math.max(1, Number(task.targetCount) || 1);
+  const range = getWeekRange(dateStr);
+  if (task.cycle === 'week') return target;
+  const activeDays = countDaysInclusive(
+    task.startDate > range.start ? task.startDate : range.start,
+    task.endDate && task.endDate < range.end ? task.endDate : range.end
+  );
+  if (task.cycle === 'month') return activeDays > 0 ? target : 0;
+  return activeDays * target;
+}
+
+function getWeeklyBottleProgress(task, dateStr) {
+  const range = getWeekRange(dateStr);
+  const keys = getDateRangeKeys(range.start, range.end, task.cycle);
+  let legacyDone = 0;
+  const dates = [...keys].flatMap(key => {
+    const record = task.records?.[key];
+    if (typeof record === 'number') {
+      legacyDone += record;
+      return [];
+    }
+    return Array.isArray(record?.dates) ? record.dates : [];
+  });
+  const weeklyDates = dates.filter(date => date >= range.start && date <= range.end);
+  const done = new Set(weeklyDates).size + legacyDone;
+  const target = Math.max(1, getWeeklyExpectedCount(task, dateStr));
+  const percent = Math.min(100, Math.round((done / target) * 100));
+  return { done, target, percent, completed: done >= target };
+}
+
+function getRecurringTasksForDate(dateStr) {
+  return state.tasks.filter(task => isRecurringTaskActiveOn(task, dateStr));
+}
+
+function getRecurringRangeLabel(task) {
+  return `${task.startDate || '未设置'} 至 ${task.endDate || '长期'}`;
+}
+
+function setTaskMode(mode) {
+  if (!elements.taskMode) return;
+  elements.taskMode.value = mode;
+  const recurring = mode === 'recurring';
+  elements.taskNormalFields?.classList.toggle('hidden', recurring);
+  elements.taskRecurringFields?.classList.toggle('hidden', !recurring);
+}
+
 function renderCalendar() {
   const year = parseInt(elements.yearSelect.value, 10);
   const month = parseInt(elements.monthSelect.value, 10) - 1;
@@ -289,7 +410,7 @@ function renderCalendar() {
       cell.innerHTML = `<div class="day-number">${dayLabel}</div>`;
     } else {
       dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${dayNumber.toString().padStart(2, '0')}`;
-      const tasksForDate = state.tasks.filter(t => t.date === dateStr);
+      const tasksForDate = state.tasks.filter(t => getTaskMode(t) === 'normal' && t.date === dateStr);
       const totalCount = tasksForDate.length;
       const pendingCount = tasksForDate.filter(t => !t.completed).length;
       const badges = `${totalCount ? `<div class="task-count-total">${totalCount}</div>` : ''}${pendingCount ? `<div class="task-count-pending">${pendingCount}</div>` : ''}`;
@@ -301,9 +422,11 @@ function renderCalendar() {
         state.currentDate = dateStr;
         state.currentMonth = dateStr.slice(0, 7);
         elements.taskDate.value = dateStr;
+        if (elements.recurringStartDate) elements.recurringStartDate.value = dateStr;
         elements.yearSelect.value = year;
         elements.monthSelect.value = (month + 1).toString().padStart(2, '0');
         renderCalendar();
+        renderRecurringCheckinTable();
         renderCalendarSummary();
         renderTodoList();
       });
@@ -314,7 +437,7 @@ function renderCalendar() {
 
 function renderCalendarSummary() {
   const selected = state.currentDate;
-  const tasks = state.tasks.filter(t => t.date === selected);
+  const tasks = state.tasks.filter(t => getTaskMode(t) === 'normal' && t.date === selected);
   const summaryText = state.dailySummaries[selected] || '';
   const reminderValue = state.reminders[selected] || '';
   if (elements.monthlyPlan) {
@@ -367,6 +490,11 @@ function renderCalendarSummary() {
     saveState();
     showToast('保存成功，今日总结已记录。');
     renderCalendarSummary();
+    const summaryMonth = selected.slice(0, 7);
+    if ([...elements.summaryMonth.options].some(option => option.value === summaryMonth)) {
+      elements.summaryMonth.value = summaryMonth;
+    }
+    renderSummaryView();
   });
   elements.calendarSummary.querySelectorAll('.summary-complete-toggle').forEach(box => {
     box.addEventListener('change', e => {
@@ -410,24 +538,160 @@ function renderTaskTypeOptions() {
   });
 }
 
+function renderRecurringCheckinTable() {
+  if (!elements.recurringCheckinTable) return;
+  const selected = state.currentDate;
+  const recurringTasks = getRecurringTasksForDate(selected);
+  const weekRange = getWeekRange(selected);
+  if (elements.recurringCheckinDate) elements.recurringCheckinDate.textContent = `${weekRange.start} 至 ${weekRange.end}`;
+  elements.recurringCheckinTable.innerHTML = recurringTasks.length ? `
+    <div class="bottle-grid">
+      ${recurringTasks.map(task => {
+        const progress = getRecurringProgress(task, selected);
+        const bottleProgress = getWeeklyBottleProgress(task, selected);
+        const stateText = progress.checkedToday ? '今日已点亮' : bottleProgress.completed ? '本周完成' : '点击点亮';
+        return `<button class="checkin-bottle-card ${progress.checkedToday ? 'lit' : ''} ${bottleProgress.completed ? 'full' : ''}" data-checkin-id="${task.id}" type="button">
+          <span class="bottle" aria-hidden="true">
+            <span class="bottle-water" style="height:${bottleProgress.percent}%"></span>
+            <span class="bottle-shine"></span>
+          </span>
+          <span class="bottle-title">${task.title}</span>
+          <span class="bottle-meta">${bottleProgress.done}/${bottleProgress.target} · ${bottleProgress.percent}%</span>
+          <span class="bottle-state">${stateText}</span>
+        </button>`;
+      }).join('')}
+    </div>` : '<p class="help-text">本周暂无有效的周期打卡任务。</p>';
+  elements.recurringCheckinTable.querySelectorAll('[data-checkin-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      checkInRecurringTask(btn.dataset.checkinId, selected);
+    });
+  });
+}
+
+function countDaysInclusive(start, end) {
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  return Math.max(0, Math.floor((endDate - startDate) / 86400000) + 1);
+}
+
+function getDateRangeKeys(start, end, cycle) {
+  const keys = new Set();
+  const cursor = new Date(`${start}T00:00:00`);
+  const last = new Date(`${end}T00:00:00`);
+  while (cursor <= last) {
+    const dateStr = formatDate(cursor);
+    keys.add(cycle === 'week' ? getWeekKey(dateStr) : cycle === 'month' ? dateStr.slice(0, 7) : dateStr);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return keys;
+}
+
+function getRecordCount(task, periodKey) {
+  const record = task.records?.[periodKey];
+  return typeof record === 'number' ? record : Number(record?.count) || 0;
+}
+
+function getYearProgress(task, year) {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+  const start = task.startDate && task.startDate > yearStart ? task.startDate : yearStart;
+  const taskEnd = task.endDate || yearEnd;
+  const end = taskEnd < yearEnd ? taskEnd : yearEnd;
+  const target = Math.max(1, Number(task.targetCount) || 1);
+  if (!task.startDate || start > end) {
+    return { done: 0, expected: 0, percent: 0 };
+  }
+  const expectedUnits = task.cycle === 'day'
+    ? countDaysInclusive(start, end)
+    : getDateRangeKeys(start, end, task.cycle).size;
+  const keys = getDateRangeKeys(start, end, task.cycle);
+  const done = [...keys].reduce((sum, key) => sum + getRecordCount(task, key), 0);
+  const expected = expectedUnits * target;
+  const percent = expected ? Math.round((done / expected) * 100) : 0;
+  return { done, expected, percent: Math.min(100, percent) };
+}
+
+function renderYearProgress() {
+  if (!elements.yearProgressTable) return;
+  const year = new Date().getFullYear();
+  const tasks = state.tasks.filter(task => getTaskMode(task) === 'recurring');
+  elements.yearProgressTable.innerHTML = tasks.length ? `
+    <div class="year-progress-list">
+      <table class="year-progress-table">
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>周期</th>
+            <th>进度</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tasks.map(task => {
+            const progress = getYearProgress(task, year);
+            return `<tr>
+              <td>${task.title}</td>
+              <td>${getCycleLabel(task.cycle)}</td>
+              <td>
+                <span class="year-progress-value">${progress.percent}%</span>
+                <span class="year-progress-meter"><span style="width:${progress.percent}%"></span></span>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : '<p class="help-text">暂无周期打卡任务。</p>';
+}
+
 function renderTodoList() {
   const filter = elements.statusFilter.value;
   const typeFilter = elements.typeFilter.value;
   const sortOrder = elements.sortOrder.value;
   let tasks = [...state.tasks];
-  if (filter === 'pending') tasks = tasks.filter(t => !t.completed);
-  if (filter === 'done') tasks = tasks.filter(t => t.completed);
+  if (filter === 'pending') {
+    tasks = tasks.filter(t => getTaskMode(t) === 'recurring' ? !getRecurringProgress(t, state.currentDate).completed : !t.completed);
+  }
+  if (filter === 'done') {
+    tasks = tasks.filter(t => getTaskMode(t) === 'recurring' ? getRecurringProgress(t, state.currentDate).completed : t.completed);
+  }
   if (typeFilter !== 'all') tasks = tasks.filter(t => t.typeId === typeFilter);
   tasks.sort((a, b) => {
-    if (sortOrder === 'dateAsc') return a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || '');
-    if (sortOrder === 'dateDesc') return b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || '');
-    if (sortOrder === 'timeAsc') return (a.time || '').localeCompare(b.time || '') || a.date.localeCompare(b.date);
-    if (sortOrder === 'timeDesc') return (b.time || '').localeCompare(a.time || '') || b.date.localeCompare(a.date);
-    if (sortOrder === 'status') return (a.completed === b.completed ? 0 : a.completed ? 1 : -1) || a.date.localeCompare(b.date);
+    const aDate = getTaskDate(a) || '';
+    const bDate = getTaskDate(b) || '';
+    const aDone = getTaskMode(a) === 'recurring' ? getRecurringProgress(a, state.currentDate).completed : a.completed;
+    const bDone = getTaskMode(b) === 'recurring' ? getRecurringProgress(b, state.currentDate).completed : b.completed;
+    if (sortOrder === 'dateAsc') return aDate.localeCompare(bDate) || (a.time || '').localeCompare(b.time || '');
+    if (sortOrder === 'dateDesc') return bDate.localeCompare(aDate) || (b.time || '').localeCompare(a.time || '');
+    if (sortOrder === 'timeAsc') return (a.time || '').localeCompare(b.time || '') || aDate.localeCompare(bDate);
+    if (sortOrder === 'timeDesc') return (b.time || '').localeCompare(a.time || '') || bDate.localeCompare(aDate);
+    if (sortOrder === 'status') return (aDone === bDone ? 0 : aDone ? 1 : -1) || aDate.localeCompare(bDate);
     return 0;
   });
   elements.taskList.innerHTML = tasks.length ? tasks.map(task => {
     const type = state.types.find(t => t.id === task.typeId) || { name: '默认', color: '#4f8cff' };
+    if (getTaskMode(task) === 'recurring') {
+      const progress = getRecurringProgress(task, state.currentDate);
+      return `
+          <div class="task-item recurring-task-item ${progress.completed ? 'completed' : ''}">
+            <div class="task-meta">
+              <p class="task-title">${task.title}</p>
+              <div class="task-info">
+                <span>开始 ${task.startDate}</span>
+                <span>结束 ${task.endDate || '长期'}</span>
+                <span>${getCycleLabel(task.cycle)}</span>
+                <span>目标 ${progress.target} 次</span>
+                <span>当前 ${progress.done}/${progress.target}</span>
+                <span class="pill"><span class="pill-dot" style="background:${type.color}"></span>${type.name}</span>
+              </div>
+              <div class="checkin-bar" aria-hidden="true">
+                <span style="width:${progress.percent}%"></span>
+              </div>
+            </div>
+            <div class="task-actions">
+              <button class="icon-button" data-edit-id="${task.id}" title="编辑">✎</button>
+              <button class="icon-button danger" data-delete-id="${task.id}" title="删除">🗑</button>
+            </div>
+          </div>`;
+    }
     return `
           <div class="task-item">
             <label class="checkbox-wrap">
@@ -469,37 +733,28 @@ function renderSummaryView() {
   elements.monthlySummary.value = state.monthlySummaries[elements.summaryMonth.value] || '';
   elements.dailySummaryList.innerHTML = '';
   const monthKey = elements.summaryMonth.value;
-  const [year, month] = monthKey.split('-').map(Number);
-  const totalDays = new Date(year, month, 0).getDate();
-  for (let day = 1; day <= totalDays; day++) {
-    const dateKey = `${monthKey}-${String(day).padStart(2, '0')}`;
-    const content = state.dailySummaries[dateKey] || '';
+  const summaries = Object.entries(state.dailySummaries)
+    .filter(([dateKey, content]) => dateKey.startsWith(`${monthKey}-`) && content.trim())
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (!summaries.length) {
+    elements.dailySummaryList.innerHTML = '<p class="help-text">本月还没有记录每日总结。</p>';
+    return;
+  }
+  summaries.forEach(([dateKey, content]) => {
     const row = document.createElement('div');
     row.className = 'day-summary-row';
-    row.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-            <strong>${dateKey}</strong>
-            <span>${content ? '已记录' : '未记录'}</span>
-          </div>
-          <textarea data-date="${dateKey}" placeholder="输入每日总结...">${content}</textarea>
-          <button class="button-primary save-day-summary" data-date="${dateKey}">保存</button>
-        `;
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;';
+    const date = document.createElement('strong');
+    date.textContent = dateKey;
+    const status = document.createElement('span');
+    status.textContent = '已记录';
+    const summary = document.createElement('p');
+    summary.className = 'daily-summary-content';
+    summary.textContent = content;
+    header.append(date, status);
+    row.append(header, summary);
     elements.dailySummaryList.appendChild(row);
-  }
-  elements.dailySummaryList.querySelectorAll('.save-day-summary').forEach(button => {
-    button.addEventListener('click', () => {
-      const dateKey = button.dataset.date;
-      const textarea = button.previousElementSibling;
-      const content = textarea.value.trim();
-      if (content) {
-        state.dailySummaries[dateKey] = content;
-      } else {
-        delete state.dailySummaries[dateKey];
-      }
-      saveState();
-      renderSummaryView();
-      showToast('每日总结已保存');
-    });
   });
 }
 
@@ -526,29 +781,52 @@ function updateCalendarSelection() {
   elements.yearSelect.value = year;
   elements.monthSelect.value = month;
   elements.taskDate.value = state.currentDate;
+  if (elements.recurringStartDate) elements.recurringStartDate.value = state.currentDate;
   elements.summaryMonth.value = state.currentMonth;
   if (elements.monthlyPlan) elements.monthlyPlan.value = state.monthlyPlans[state.currentMonth] || '';
 }
 
 function addTask() {
   const title = elements.taskTitle.value.trim();
+  const mode = elements.taskMode?.value || 'normal';
   const date = elements.taskDate.value;
   const time = elements.taskTime.value;
+  const startDate = elements.recurringStartDate?.value || state.currentDate;
+  const endDate = elements.recurringEndDate?.value || '';
+  const cycle = elements.recurringCycle?.value || 'day';
+  const targetCount = Math.max(1, Number(elements.recurringTargetCount?.value) || 1);
   const typeId = elements.taskType.value;
-  if (!title || !date) {
+  if (!title || (mode === 'normal' && !date) || (mode === 'recurring' && !startDate)) {
     return showToast('请填写任务名称与日期。');
   }
-  const task = {
-    id: state.selectedTaskId || `task-${Date.now()}`,
-    title,
-    date,
-    time,
-    typeId,
-    completed: false
-  };
+  if (mode === 'recurring' && endDate && endDate < startDate) {
+    return showToast('结束日期不能早于开始日期。');
+  }
+  const existing = state.tasks.find(t => t.id === state.selectedTaskId);
+  const task = mode === 'recurring'
+    ? {
+      id: state.selectedTaskId || `task-${Date.now()}`,
+      title,
+      typeId,
+      mode: 'recurring',
+      startDate,
+      endDate,
+      cycle,
+      targetCount,
+      records: existing?.records || {}
+    }
+    : {
+      id: state.selectedTaskId || `task-${Date.now()}`,
+      title,
+      date,
+      time,
+      typeId,
+      mode: 'normal',
+      completed: existing?.completed || false
+    };
   if (state.selectedTaskId) {
     const idx = state.tasks.findIndex(t => t.id === state.selectedTaskId);
-    if (idx !== -1) state.tasks[idx] = { ...state.tasks[idx], ...task };
+    if (idx !== -1) state.tasks[idx] = task;
     state.selectedTaskId = null;
   } else {
     state.tasks.push(task);
@@ -556,25 +834,38 @@ function addTask() {
   saveState();
   resetTaskForm();
   renderCalendar();
+  renderRecurringCheckinTable();
+  renderYearProgress();
   renderTodoList();
   showToast('任务已保存。');
 }
 
 function resetTaskForm() {
   state.selectedTaskId = null;
+  setTaskMode('normal');
   elements.taskTitle.value = '';
   elements.taskTime.value = '';
   elements.taskType.value = state.types[0]?.id || '';
   elements.taskDate.value = state.currentDate;
+  if (elements.recurringStartDate) elements.recurringStartDate.value = state.currentDate;
+  if (elements.recurringEndDate) elements.recurringEndDate.value = '';
+  if (elements.recurringCycle) elements.recurringCycle.value = 'day';
+  if (elements.recurringTargetCount) elements.recurringTargetCount.value = '1';
 }
 
 function startEditTask(taskId) {
   const task = state.tasks.find(t => t.id === taskId);
   if (!task) return;
   state.selectedTaskId = taskId;
+  const mode = getTaskMode(task);
+  setTaskMode(mode);
   elements.taskTitle.value = task.title;
-  elements.taskDate.value = task.date;
-  elements.taskTime.value = task.time;
+  elements.taskDate.value = task.date || state.currentDate;
+  elements.taskTime.value = task.time || '';
+  if (elements.recurringStartDate) elements.recurringStartDate.value = task.startDate || state.currentDate;
+  if (elements.recurringEndDate) elements.recurringEndDate.value = task.endDate || '';
+  if (elements.recurringCycle) elements.recurringCycle.value = task.cycle || 'day';
+  if (elements.recurringTargetCount) elements.recurringTargetCount.value = task.targetCount || 1;
   elements.taskType.value = task.typeId;
   const todoTab = Array.from(elements.tabs).find(tab => tab.dataset.panel === 'todo-panel');
   if (todoTab) todoTab.click();
@@ -585,6 +876,8 @@ function deleteTask(taskId) {
   state.tasks = state.tasks.filter(t => t.id !== taskId);
   saveState();
   renderCalendar();
+  renderRecurringCheckinTable();
+  renderYearProgress();
   renderTodoList();
   showToast('任务已删除。');
 }
@@ -598,6 +891,52 @@ function toggleTaskCompletion(taskId, completed) {
   if (completed) {
     celebrate();
   }
+}
+
+function checkInRecurringTask(taskId, dateStr) {
+  const task = state.tasks.find(t => t.id === taskId);
+  if (!task || getTaskMode(task) !== 'recurring') return;
+  if (!isRecurringTaskActiveOn(task, dateStr)) {
+    showToast('当前日期不在任务有效期内。');
+    return;
+  }
+  const progress = getRecurringProgress(task, dateStr);
+  if (progress.checkedToday) {
+    const currentRecord = task.records?.[progress.periodKey];
+    const dates = Array.isArray(currentRecord?.dates) ? currentRecord.dates : [];
+    const nextDates = dates.filter(date => date !== dateStr);
+    task.records[progress.periodKey] = {
+      count: Math.max(0, progress.done - 1),
+      dates: nextDates
+    };
+    saveState();
+    renderCalendar();
+    renderRecurringCheckinTable();
+    renderYearProgress();
+    renderCalendarSummary();
+    renderTodoList();
+    showToast('已取消今日点亮。');
+    return;
+  }
+  if (progress.completed) {
+    showToast('本周期已完成打卡目标。');
+    return;
+  }
+  task.records = task.records || {};
+  const currentRecord = task.records[progress.periodKey];
+  const dates = Array.isArray(currentRecord?.dates) ? currentRecord.dates : [];
+  task.records[progress.periodKey] = {
+    count: progress.done + 1,
+    dates: [...dates, dateStr]
+  };
+  saveState();
+  renderCalendar();
+  renderRecurringCheckinTable();
+  renderYearProgress();
+  renderCalendarSummary();
+  renderTodoList();
+  showToast('打卡成功。');
+  celebrate();
 }
 
 function saveReminderTime() {
@@ -647,6 +986,8 @@ function deleteType(typeId) {
 function renderAll() {
   updateCalendarSelection();
   renderCalendar();
+  renderRecurringCheckinTable();
+  renderYearProgress();
   renderCalendarSummary();
   renderTaskTypeOptions();
   renderTodoList();
@@ -770,19 +1111,28 @@ function setMonthlyPlanMode(editable) {
 }
 
 function initEventListeners() {
-  elements.yearSelect.addEventListener('change', renderCalendar);
-  elements.monthSelect.addEventListener('change', renderCalendar);
+  elements.yearSelect.addEventListener('change', () => {
+    renderCalendar();
+    renderRecurringCheckinTable();
+  });
+  elements.monthSelect.addEventListener('change', () => {
+    renderCalendar();
+    renderRecurringCheckinTable();
+  });
   elements.todayButton.addEventListener('click', () => {
     const today = new Date().toISOString().slice(0, 10);
     state.currentDate = today;
     state.currentMonth = today.slice(0, 7);
     updateCalendarSelection();
     renderCalendar();
+    renderRecurringCheckinTable();
+    renderYearProgress();
     renderCalendarSummary();
     renderTodoList();
   });
   elements.saveTask.addEventListener('click', addTask);
   elements.cancelEdit.addEventListener('click', resetTaskForm);
+  if (elements.taskMode) elements.taskMode.addEventListener('change', e => setTaskMode(e.target.value));
   elements.statusFilter.addEventListener('change', renderTodoList);
   elements.typeFilter.addEventListener('change', renderTodoList);
   elements.sortOrder.addEventListener('change', renderTodoList);
